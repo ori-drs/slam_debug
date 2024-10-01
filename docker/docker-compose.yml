@@ -11,7 +11,6 @@ services:
         - UID=${UID}
         - GID=${GID}
     container_name: slam_debug
-    image: slam_debug:devel
     network_mode: "host"
     tty: true
     volumes:
