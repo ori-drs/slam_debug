@@ -1,0 +1,224 @@
+#include <iostream>
+#include <unistd.h>
+
+#include "slam_debug/simple_slam/simple_slam.hpp"
+
+#include <gtsam/slam/BetweenFactor.h> //bifactors defined edges between nodes in the factor graph
+
+using namespace std;
+
+
+App::App(CommandLineConfig &cl_cfg):
+    cl_cfg_(cl_cfg), isam_(ISAM2Params(ISAM2GaussNewtonParams(), 0.01, 1)){
+
+
+//    prior_info: [1.e+2, 1.e+2, 1.e+2, 1.e+2, 1.e+2, 1.e+2]
+//    odometry_info: [1.e+6, 1.e+6, 1.e+6, 1.e+6, 1.e+6, 1.e+6] # order: roll, pitch, yaw, x, y, z
+
+  Vector6 prior_info;
+  prior_info << 1.e+2, 1.e+2, 1.e+2, 1.e+2, 1.e+2, 1.e+2;
+  //slam_params_.prior_info[0], slam_params_.prior_info[1], slam_params_.prior_info[2],
+  //              slam_params_.prior_info[3], slam_params_.prior_info[4], slam_params_.prior_info[5];
+  prior_noise_ = noiseModel::Diagonal::Precisions(prior_info);
+
+  Vector6 odometry_info;
+  odometry_info << 1.e+6, 1.e+6, 1.e+6, 1.e+6, 1.e+6, 1.e+6;
+  //slam_params_.odometry_info[0], slam_params_.odometry_info[1], slam_params_.odometry_info[2],
+  //                 slam_params_.odometry_info[3], slam_params_.odometry_info[4], slam_params_.odometry_info[5];
+  odometry_noise_ = noiseModel::Diagonal::Precisions(odometry_info);
+
+
+}
+
+void quat_to_euler(const Eigen::Quaterniond& q, double& roll, double& pitch, double& yaw) {
+  const double q0 = q.w();
+  const double q1 = q.x();
+  const double q2 = q.y();
+  const double q3 = q.z();
+  roll = atan2(2.0*(q0*q1+q2*q3), 1.0-2.0*(q1*q1+q2*q2));
+  pitch = asin(2.0*(q0*q2-q3*q1));
+  yaw = atan2(2.0*(q0*q3+q1*q2), 1.0-2.0*(q2*q2+q3*q3));
+}
+
+Eigen::Isometry3d gtsamPoseToIso(const Pose3 &pose){
+  Eigen::Isometry3d pose_eigen = Eigen::Isometry3d::Identity();
+  pose_eigen.translate(pose.translation());
+  Eigen::Quaterniond quat = pose.rotation().toQuaternion();
+  pose_eigen.rotate(quat);
+  return pose_eigen;
+}
+
+void quickPrint(const Eigen::Isometry3d &pose, const std::string &label){
+  double rpy[3];
+  quat_to_euler(Eigen::Quaterniond(pose.rotation()), rpy[0], rpy[1], rpy[2]);
+  std::cerr << pose.translation().transpose() << " " << rpy[2]*180/M_PI << " " << label << "\n";;
+}
+
+
+uint64_t App::addPriorFactor(uint64_t keyID,
+                                const Eigen::Isometry3d &initial_pose_eigen){
+
+  NonlinearFactorGraph factor_graph;
+  Values initial_guess;
+  Pose3 initial_pose(Rot3(initial_pose_eigen.rotation()),Point3(initial_pose_eigen.translation()));
+  factor_graph.addPrior<Pose3>(keyID, initial_pose, prior_noise_);
+  //pose_times_.push_back(key_time);
+  initial_guess.insert(keyID, initial_pose);
+  const ISAM2Result result = isam_.update(factor_graph, initial_guess);
+
+  // isam_.update(); // unnecessary ... removed
+  solution_ = isam_.calculateEstimate();
+
+  return static_cast<uint64_t>(result.newFactorsIndices[0]);
+}
+
+
+void App::addOdometryFactorInner(uint64_t tailID, uint64_t headID,
+                                    const Eigen::Isometry3d &relative_trans,
+                                    const Eigen::Isometry3d &head_initial_guess,
+                                    gtsam::noiseModel::Base::shared_ptr relative_noise) {
+
+  NonlinearFactorGraph factor_graph;
+  Values initial_guess;
+  Pose3 relative_trans_gtsam(Rot3(relative_trans.rotation()), Point3(relative_trans.translation()));
+  factor_graph.emplace_shared<BetweenFactor<Pose3>>(tailID, headID, relative_trans_gtsam, relative_noise);
+
+
+  Pose3 initial_guess_pose(Rot3(head_initial_guess.rotation()), Point3(head_initial_guess.translation()));
+  initial_guess.insert(headID, initial_guess_pose);
+  std::cerr << "a\n";
+//  factor_graph.print("Serialized factor graph: ");
+  isam_.update(factor_graph, initial_guess);
+  std::cerr << "b\n";
+  isam_.update();
+  std::cerr << "c\n";
+
+  solution_ = isam_.calculateEstimate();
+
+}
+
+
+
+
+void App::readOdometryData(){
+  std::cout << "starting readOdometryData\n";
+
+  Eigen::Isometry3d initial_pose = Eigen::Isometry3d::Identity();
+  addPriorFactor(0, initial_pose);
+
+
+  for(size_t i=0; i < 10; i++){
+    Eigen::Isometry3d relative_trans = Eigen::Isometry3d::Identity();
+    relative_trans.translation().x() = 1;
+
+    Eigen::Isometry3d initial_guess = Eigen::Isometry3d::Identity();
+    initial_guess.translation().x() = i*1.0+ 1.0;
+
+    std::cout << i << ": " << initial_guess.translation().transpose() << "\n";
+    addOdometryFactorInner(i,i+1, relative_trans, initial_guess, odometry_noise_);
+  }
+
+
+
+
+
+
+
+
+
+
+
+
+  std::vector<Eigen::Isometry3d> vertices;
+  std::vector<std::pair<uint64_t, uint64_t>> edges;
+
+ std::map<Key, Pose3> poses = solution_.extract<Pose3>();
+ for (const auto& key_value: poses){
+   // dont count landmarks
+   const Symbol sym(key_value.first);
+   if ((sym.chr() == 'l') || (sym.chr() == 'i')){
+     continue;
+   }
+   const gtsam::Pose3 pose = key_value.second;
+
+    //std::cerr << pose << " gtsam pose. getResult\n";
+    Eigen::Isometry3d pose_eigen = gtsamPoseToIso(pose);
+    //quickPrint(pose_eigen, "pose_eigen");
+
+    vertices.push_back(pose_eigen);
+
+    //std::cerr << key_value.key << ": " << pose.translation().transpose() << ", "
+    //  << quat.w() << ", " << quat.x() << ", " << quat.y() << ", " << quat.z() << "\n";
+  }
+
+  auto isFactorLandmark =
+      [](const auto& pose3Between) {
+        const Symbol sym1(pose3Between->key1());
+        const Symbol sym2(pose3Between->key2());
+        return sym1.chr() == 'l' or sym2.chr() == 'l';
+      };
+
+  auto isFactorImage =
+      [](const auto& pose3Between) {
+        const Symbol sym1(pose3Between->key1());
+        const Symbol sym2(pose3Between->key2());
+        return sym1.chr() == 'i' or sym2.chr() == 'i';
+      };
+
+  NonlinearFactorGraph factor_graph;
+  factor_graph = isam_.getFactorsUnsafe();
+  for(const std::shared_ptr<NonlinearFactor>& factor: factor_graph) {
+    std::shared_ptr<BetweenFactor<Pose3> > pose3Between =
+        std::dynamic_pointer_cast<BetweenFactor<Pose3> >(factor);
+    if (pose3Between){
+      //std::cerr << "BetweenFactor\n";
+      //std::cerr <<  DefaultKeyFormatter(pose3Between->key1()) << ", " << DefaultKeyFormatter(pose3Between->key2()) <<" keys\n";
+      // need to filter out april tag landmark and image edges
+      if ((!isFactorLandmark(pose3Between)) && (!isFactorImage(pose3Between))){
+        edges.emplace_back(pose3Between->key1(), pose3Between->key2());
+        continue;
+      }
+    }
+
+  }
+
+
+
+
+  std::cerr << vertices.size() << " is size of vertices\n";
+  for (size_t i=0; i < vertices.size(); i++){
+    quickPrint(vertices[i], "vertices");
+  }
+
+
+  std::cout << "Finished readOdometryData\n";
+}
+
+
+int main( int argc, char** argv ){
+
+  CommandLineConfig cl_cfg;
+  cl_cfg.odom_frame = "odom_vilens";
+  cl_cfg.map_path = "path-to-raw-data";
+  //getParamOrExit(nh, "odom_frame", cl_cfg.odom_frame);
+  //getParamOrExit(nh, "map_path",   cl_cfg.map_path);
+
+
+ 
+
+  App app(cl_cfg);
+
+//  sleep(2); // sleep needed to register with rviz
+  app.readOdometryData();
+
+  /*
+  sleep(1);
+  processPose(100);
+  sleep(1);
+  */
+
+  
+  //ROS_INFO_STREAM("Spinning...");
+
+  return 0;
+}
