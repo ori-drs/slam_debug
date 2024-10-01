@@ -9,9 +9,6 @@
 
 using namespace gtsam;
 
-
-
-
 struct CommandLineConfig
 {
   std::string odom_frame;
@@ -28,7 +25,7 @@ class App{
     void getResult(std::vector<Eigen::Isometry3d> &vertices,
                   std::vector<std::pair<uint64_t, uint64_t> > &edges);
 
-    void readOdometryData();
+    void runTest();
 
     uint64_t addPriorFactor(uint64_t keyID,
                                 const Eigen::Isometry3d &initial_pose_eigen);
@@ -43,11 +40,10 @@ class App{
 
     gtsam::ISAM2 *isam_;
 
-
     gtsam::noiseModel::Diagonal::shared_ptr prior_noise_;
     gtsam::noiseModel::Diagonal::shared_ptr odometry_noise_;
 
-  gtsam::Values solution_;
+    gtsam::Values solution_;
 
     gtsam::Pose3 last_pose_;
 

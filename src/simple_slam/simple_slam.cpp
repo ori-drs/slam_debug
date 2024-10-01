@@ -8,7 +8,6 @@
 
 using namespace std;
 
-
 App::App(CommandLineConfig &cl_cfg):
     cl_cfg_(cl_cfg){
 
@@ -139,9 +138,12 @@ std::string getEnvVar( std::string const & key )
     return val == NULL ? std::string("") : std::string(val);
 }
 
-void App::readOdometryData(){
-  std::cout << "starting readOdometryData\n";
+void App::runTest(){
+  std::cerr << "starting runTest\n";
   std::string file_path = getEnvVar("HOME") + "/git/slam_debug/data/";
+  
+  std::cerr << "About to read:\n";
+  std::cerr << string(file_path + "/slam_pose_graph.slam") << "\n";
 
   SissionData mission = SissionData(string(file_path + "/slam_pose_graph.slam"),0,0);
   std::cout << mission.poses.size() << " is mission poses size\n";
@@ -204,37 +206,11 @@ void App::readOdometryData(){
       quickPrint(initial_guess, "initial_guess" );
       quickPrint(vertices.back(), "vertices" );
 
-
-
-
     }else{
       std::cerr << "no loops in this mode\n";
       exit(-1);
     }
   }
-
-
-
-
-
-  Eigen::Isometry3d odometry_pose = initial_pose;
-
-  Eigen::Isometry3d last_odometry_pose = Eigen::Isometry3d::Identity();
-
-  for(size_t i=1; i < 10; i++){
-
-    Eigen::Isometry3d relative_trans = Eigen::Isometry3d::Identity();
-    relative_trans.translation().x() = 1;
-
-    last_odometry_pose = odometry_pose;
-    odometry_pose = odometry_pose * relative_trans;
-
-
-  }
-
-
-
-
 
   bool write_output=false;
   if(write_output){
@@ -249,7 +225,7 @@ void App::readOdometryData(){
     }
   }
 
-  std::cout << "Finished readOdometryData\n";
+  std::cout << "Finished runTest\n";
 }
 
 
@@ -258,25 +234,9 @@ int main( int argc, char** argv ){
   CommandLineConfig cl_cfg;
   cl_cfg.odom_frame = "odom_vilens";
   cl_cfg.map_path = "path-to-raw-data";
-  //getParamOrExit(nh, "odom_frame", cl_cfg.odom_frame);
-  //getParamOrExit(nh, "map_path",   cl_cfg.map_path);
-
-
- 
 
   App app(cl_cfg);
-
-//  sleep(2); // sleep needed to register with rviz
-  app.readOdometryData();
-
-  /*
-  sleep(1);
-  processPose(100);
-  sleep(1);
-  */
-
-  
-  //ROS_INFO_STREAM("Spinning...");
+  app.runTest();
 
   return 0;
 }
