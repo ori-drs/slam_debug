@@ -1,0 +1,20 @@
+version: "3.9"
+services:
+  slam_debug:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+      args:
+        - CATKIN_WORKSPACE_DIR=${CATKIN_WORKSPACE_DIR}
+        - USERNAME=${USERNAME:-developer}
+        - UID=${UID}
+        - GID=${GID}
+    container_name: slam_debug
+    environment:
+      - LIBGL_ALWAYS_SOFTWARE=1
+    image: slam_debug:devel
+    network_mode: "host"
+    tty: true
+    volumes:
+      - ..:/home/${USERNAME}/git/slam_debug
+
