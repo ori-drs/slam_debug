@@ -5,13 +5,12 @@ services:
       context: ..
       dockerfile: docker/Dockerfile
       args:
-        - CATKIN_WORKSPACE_DIR=${CATKIN_WORKSPACE_DIR}
+        - BASE_IMAGE=ubuntu:22.04
+        - GTSAM_VERSION=4.2.0
         - USERNAME=${USERNAME:-developer}
         - UID=${UID}
         - GID=${GID}
     container_name: slam_debug
-    environment:
-      - LIBGL_ALWAYS_SOFTWARE=1
     image: slam_debug:devel
     network_mode: "host"
     tty: true
