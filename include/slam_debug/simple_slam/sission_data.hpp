@@ -6,6 +6,8 @@
 
 #include <Eigen/Core>
 #include <Eigen/Geometry>
+
+#include <cstdint>
 #include <string>
 #include <vector>
 #include <map>
