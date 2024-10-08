@@ -83,13 +83,17 @@ void App::addOdometryFactorInner(uint64_t tailID, uint64_t headID,
                                     const Eigen::Isometry3d &head_initial_guess,
                                     gtsam::noiseModel::Base::shared_ptr relative_noise) {
 
+  // Convert the two Isometry3d to Affine3d:
+  Eigen::Affine3d relative_trans_af = Eigen::Affine3d( relative_trans.matrix() );
+  Eigen::Affine3d head_initial_guess_af = Eigen::Affine3d( head_initial_guess.matrix() );
+
   NonlinearFactorGraph factor_graph;
   Values initial_guess;
-  Pose3 relative_trans_gtsam(Rot3(relative_trans.rotation()), Point3(relative_trans.translation()));
+  Pose3 relative_trans_gtsam(Rot3(relative_trans_af.rotation()), Point3(relative_trans_af.translation()));
   factor_graph.emplace_shared<BetweenFactor<Pose3>>(tailID, headID, relative_trans_gtsam, relative_noise);
 
 
-  Pose3 initial_guess_pose(Rot3(head_initial_guess.rotation()), Point3(head_initial_guess.translation()));
+  Pose3 initial_guess_pose(Rot3(head_initial_guess_af.rotation()), Point3(head_initial_guess_af.translation()));
   initial_guess.insert(headID, initial_guess_pose);
   //std::cerr << "a\n";
 //  factor_graph.print("Serialized factor graph: ");
